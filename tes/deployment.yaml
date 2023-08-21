@@ -1,74 +1,128 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cnews-wp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wp
+  template:
+    metadata:
+      labels:
+        app: wp
+    spec:
+      containers:
+      - name: wp
+        image: wordpress:6.2.1-apache
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: cnews-sv-mariadb
+        - name: WORDPRESS_DB_NAME
+          value: wp-camara
+        - name: WORDPRESS_DB_PASSWORD
+          value: wp-pass
+        - name: WORDPRESS_DB_USER
+          value: wp-user
+        - name: WORDPRESS_EXTRA_WP_CONFIG_CONTENT
+          value: 
+            define('VIDEO_UPLOAD_DIR', '/var/www/html/wp-content/uploads/midias/video');
+            define('VIDEO_UPLOAD_URL', 'http://localhost:8282/wp-content/uploads/midias/video');
+            define('IMAGE_UPLOAD_DIR', '/var/www/html/wp-content/uploads/midias/image');
+            define('IMAGE_UPLOAD_URL', 'http://localhost:8282/wp-content/uploads/midias/image');
+            define('AUDIO_UPLOAD_DIR', '/var/www/html/wp-content/uploads/midias/audio');
+            define('AUDIO_UPLOAD_URL', 'http://localhost:8282/wp-content/uploads/midias/audio');
+        volumeMounts:
+          - name: wordpress-persistent-storage
+            mountPath: /var/www/html
+      volumes:
+      - name: wordpress-persistent-storage
+        persistentVolumeClaim:
+          claimName: wp-pv-claim
+---
 apiVersion: v1
 kind: Service
 metadata:
-  name: wordpress-mysql
-  labels:
-    app: wordpress
+  name: cnews-service-wp
 spec:
-  ports:
-    - port: 3306
   selector:
-    app: wordpress
-    tier: mysql
-  clusterIP: None
+      app: sv-wp
+  ports:
+    - port: 80
+      targetPort: 80
+  type: LoadBalancer
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: mysql-pv-claim
+  name: wp-pv-claim
   labels:
-    app: wordpress
+    app: wp
 spec:
   accessModes:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 20Gi
+      storage: 200Mi
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: wordpress-mysql
-  labels:
-    app: wordpress
+  name: cnews-mariadb
 spec:
   selector:
     matchLabels:
-      app: wordpress
-      tier: mysql
-  strategy:
-    type: Recreate
+      app: mariadb
   template:
     metadata:
       labels:
-        app: wordpress
-        tier: mysql
+        app: mariadb
     spec:
       containers:
-      - image: mysql:8.0
-        name: mysql
-        env:
-        - name: MYSQL_ROOT_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: mysql-pass
-              key: password
-        - name: MYSQL_DATABASE
-          value: wordpress
-        - name: MYSQL_USER
-          value: wordpress
-        - name: MYSQL_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: mysql-pass
-              key: password
+      - image: mariadb:10.11
+        name: mariadb
         ports:
         - containerPort: 3306
-          name: mysql
-        volumeMounts:
-        - name: mysql-persistent-storage
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: root@1234
+        - name: MYSQL_DATABASE
+          value: wp-camara
+        - name: MYSQL_USER
+          value: wp-user
+        - name: MYSQL_PASSWORD
+          value: wp-pass
+      volumeMounts:
+        - name: mariadb-persistent-storage
           mountPath: /var/lib/mysql
-      volumes:
-      - name: mysql-persistent-storage
-        persistentVolumeClaim:
-          claimName: mysql-pv-claim
+    volumes:
+    - name: mariadb-persistent-storage
+      persistentVolumeClaim:
+        claimName: mariadb-pv-claim
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cnews-sv-mariadb
+spec:
+  selector:
+      app: mariadb
+  ports:
+    - port: 3306
+      targetPort: 3306
+  clusterIP: None
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mariadb-pv-claim
+  labels:
+    app: wp
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
